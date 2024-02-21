@@ -143,7 +143,7 @@ func main() {
 						return
 					}
 					lockMp3sDone.RUnlock()
-					stdOut, stdErr, err := cmdExec.Run("python", "cboMP3/core/cbo_mp3.py", fileWork, bitRate)
+					stdOut, stdErr, err := cmdExec.Run("python3", "cboMP3/core/cbo_mp3.py", fileWork, bitRate)
 					if err != nil {
 						log.Println(fileWork, " Errored\n\n\n", stdOut, stdErr, err.Error())
 						return
