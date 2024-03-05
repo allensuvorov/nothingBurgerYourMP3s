@@ -36,4 +36,4 @@ This tool will overwrite your files. Make sure you have backups prior to using f
 
 ## Contributing
 
-This program ideally should be a go install, but it has dependencies with python to pass to ffmpeg abstraction which calls either ffmpeg.exe or ffmpeg. Ideally we can just use pure go for this someday.
+This program ideally should be a go install, but it has dependencies with python to pass to ffmpeg abstraction which calls either ffmpeg.exe or ffmpeg. Ideally we can just use pure go for this someday. 

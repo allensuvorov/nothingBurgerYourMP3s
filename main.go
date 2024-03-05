@@ -2,14 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/DanielRenne/GoCore/core/cmdExec"
 	"github.com/DanielRenne/GoCore/core/extensions"
 	"github.com/DanielRenne/GoCore/core/logger"
 	"github.com/DanielRenne/GoCore/core/path"
@@ -143,11 +144,13 @@ func main() {
 						return
 					}
 					lockMp3sDone.RUnlock()
-					stdOut, stdErr, err := cmdExec.Run("python3", "cboMP3/core/cbo_mp3.py", fileWork, bitRate)
+
+					err := convertTo128kbps(fileWork)
 					if err != nil {
-						log.Println(fileWork, " Errored\n\n\n", stdOut, stdErr, err.Error())
+						log.Println(fileWork, " Errored\n\n\n", err.Error(), bitRate)
 						return
 					}
+
 					lockMp3sDone.Lock()
 					mp3sDone = append(mp3sDone, fileWork)
 					data, err := json.MarshalIndent(mp3sDone, "", "    ")
@@ -156,7 +159,25 @@ func main() {
 					}
 					lockMp3sDone.Unlock()
 
-					log.Println(fileWork, " Done! \n\nTook "+logger.TimeTrack(start, "func time")+"\n\n", stdOut, stdErr)
+					log.Println(fileWork, " Done! \n\nTook "+logger.TimeTrack(start, "func time")+"\n\n")
+
+					/*
+						stdOut, stdErr, err := cmdExec.Run("python3", "cboMP3/core/cbo_mp3.py", fileWork, bitRate)
+						if err != nil {
+							log.Println(fileWork, " Errored\n\n\n", stdOut, stdErr, err.Error())
+							return
+						}
+
+						lockMp3sDone.Lock()
+						mp3sDone = append(mp3sDone, fileWork)
+						data, err := json.MarshalIndent(mp3sDone, "", "    ")
+						if err == nil {
+							err = extensions.Write(string(data), mp3sProcessedFileName)
+						}
+						lockMp3sDone.Unlock()
+
+						log.Println(fileWork, " Done! \n\nTook "+logger.TimeTrack(start, "func time")+"\n\n", stdOut, stdErr)
+					*/
 				},
 			})
 		}
@@ -173,4 +194,18 @@ func main() {
 	logger.Log("Waiting on all " + extensions.IntToString(len(processJobs)) + " MP3 ffmpeg go routines to finish...")
 	wg.Wait()
 	log.Println(logger.TimeTrack(startEntireProcess, "Completed in"))
+}
+
+func convertTo128kbps(inputFile string) error {
+	inputFileName := filepath.Base(inputFile)
+	outputFileName := "new_" + inputFileName
+	outputFile := filepath.Join(filepath.Dir(inputFile), outputFileName)
+	cmd := exec.Command("ffmpeg", "-i", inputFile, "-b:a", "128k", outputFile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("error converting file: %w", err)
+	}
+	return nil
 }
