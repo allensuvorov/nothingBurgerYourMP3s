@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -145,9 +147,14 @@ func main() {
 					}
 					lockMp3sDone.RUnlock()
 
-					err := convertTo128kbps(fileWork)
+					intBitRate, err := strconv.Atoi(bitRate)
 					if err != nil {
-						log.Println(fileWork, " Errored\n\n\n", err.Error(), bitRate)
+						log.Println(fileWork, " Errored\n\n\n", err.Error())
+						return
+					}
+					err = convertMusicFile(fileWork, intBitRate)
+					if err != nil {
+						log.Println(fileWork, " Errored\n\n\n", err.Error())
 						return
 					}
 
@@ -196,16 +203,127 @@ func main() {
 	log.Println(logger.TimeTrack(startEntireProcess, "Completed in"))
 }
 
-func convertTo128kbps(inputFile string) error {
-	inputFileName := filepath.Base(inputFile)
-	outputFileName := "new_" + inputFileName
-	outputFile := filepath.Join(filepath.Dir(inputFile), outputFileName)
-	cmd := exec.Command("ffmpeg", "-i", inputFile, "-b:a", "128k", outputFile)
+// to remove python
+
+func findFFmpegExecutable() (string, error) {
+	// TODO - do we need to find ffmpeg.exe in the PATH?
+	// Try to find ffmpeg.exe in the PATH
+	// ffmpegPath, err := exec.LookPath("ffmpeg.exe")
+	ffmpegPath, err := exec.LookPath("ffmpeg")
+	if err == nil {
+		return ffmpegPath, nil
+	}
+
+	// If not found in PATH, try the program files directory on Windows
+	if thisOS := strings.ToLower(runtime.GOOS); thisOS == "windows" {
+		programFiles := os.Getenv("ProgramFiles")
+		ffmpegPath = filepath.Join(programFiles, "ffmpeg", "bin", "ffmpeg.exe")
+		_, err = os.Stat(ffmpegPath)
+		if err == nil {
+			return ffmpegPath, nil
+		}
+	}
+
+	return "", fmt.Errorf("ffmpeg not found")
+}
+
+func convertMusicFile(filename string, bitRate int) error {
+	if bitRate <= 0 {
+		bitRate = 128
+	}
+
+	ffmpegPath, err := findFFmpegExecutable()
+	if err != nil {
+		return fmt.Errorf("FFmpeg not found: %v", err)
+	}
+
+	// Check if the file exists
+	_, err = os.Stat(filename)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("File does not exist: %s", filename)
+	}
+
+	// Get the file extension
+	ext := strings.ToLower(filepath.Ext(filename))
+
+	// Check if it's an MP3 or FLAC file
+	isFLAC := ext == ".flac"
+	isMP3 := ext == ".mp3"
+
+	if !isFLAC && !isMP3 {
+		return fmt.Errorf("Unsupported file format: %s", ext)
+	}
+
+	// Check the bitrate of the input file
+	if isMP3 {
+		cmd := exec.Command(ffmpegPath, "-i", filename)
+		output, _ := cmd.CombinedOutput()
+		// TODO ignore this error or use ffprobe instead
+		// if err != nil {
+		// 	log.Println(string(output))
+		// 	return fmt.Errorf("Error checking bitrate: %v", err)
+		// }
+		bitrateStr := string(output)
+		if strings.Contains(bitrateStr, "Audio: mp3") {
+			currentBitrate := parseBitrate(bitrateStr)
+			if currentBitrate <= bitRate {
+				return fmt.Errorf("Bitrate is already lower than the desired output: %d kbps", currentBitrate)
+			}
+		}
+	}
+
+	// Generate the output filename
+	outputFilename := "wip-nothingburger-" + filepath.Base(filename)
+
+	// Determine the codec and options based on the input file format
+	codec := "-c:a libmp3lame"
+	if isFLAC {
+		codec = "-c:a flac"
+	}
+
+	// Run FFmpeg command
+	log.Println(ffmpegPath, "-i", filename, codec, "-b:a", fmt.Sprintf("%dk", bitRate), outputFilename)
+	cmd := exec.Command(ffmpegPath, "-i", filename, codec, "-b:a", fmt.Sprintf("%dk", bitRate), outputFilename)
+	// ffmpeg -i input.mp3 -codec:a libmp3lame -b:a 128k output.mp3
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	err := cmd.Run()
+
+	err = cmd.Run()
 	if err != nil {
-		return fmt.Errorf("error converting file: %w", err)
+		log.Println(outputFilename)
+		return fmt.Errorf("Error converting file: %v", err)
 	}
+
+	// Replace the original file with the converted file
+	err = os.Remove(filename)
+	if err != nil {
+		return fmt.Errorf("Error removing original file: %v", err)
+	}
+
+	err = os.Rename(outputFilename, filename)
+	if err != nil {
+		return fmt.Errorf("Error renaming the converted file: %v", err)
+	}
+
+	fmt.Printf("File %s encoded.\n", filename)
 	return nil
+}
+
+func parseBitrate(output string) int {
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "Stream #0:0") {
+			parts := strings.Fields(line)
+			for i := 0; i < len(parts); i++ {
+				if parts[i] == "kb/s" {
+					bitRate, err := strconv.Atoi(parts[i-1])
+					if err != nil {
+						fmt.Errorf("Error while parsing bitrate: %v", err)
+					}
+					return bitRate
+				}
+			}
+		}
+	}
+	return 0
 }
