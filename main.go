@@ -274,6 +274,7 @@ func convertMusicFile(filename string, bitRate int) error {
 
 	// Generate the output filename
 	outputFilename := "wip-nothingburger-" + filepath.Base(filename)
+	// outputFile := filepath.Join(filepath.Dir(filename), outputFilename)
 
 	// Determine the codec and options based on the input file format
 	codec := "-c:a libmp3lame"
@@ -282,9 +283,10 @@ func convertMusicFile(filename string, bitRate int) error {
 	}
 
 	// Run FFmpeg command
-	log.Println(ffmpegPath, "-i", filename, codec, "-b:a", fmt.Sprintf("%dk", bitRate), outputFilename)
-	cmd := exec.Command(ffmpegPath, "-i", filename, codec, "-b:a", fmt.Sprintf("%dk", bitRate), outputFilename)
+	log.Println(ffmpegPath, "-i", filename, codec, "-b:a", fmt.Sprintf("%dk", bitRate), "-y", outputFilename)
+	cmd := exec.Command(ffmpegPath, "-i", filename, "-b:a", fmt.Sprintf("%dk", bitRate), "-y", outputFilename)
 	// ffmpeg -i input.mp3 -codec:a libmp3lame -b:a 128k output.mp3
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
